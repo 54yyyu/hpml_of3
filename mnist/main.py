@@ -9,7 +9,6 @@ from torch.optim.lr_scheduler import StepLR
 # for cpu time measurement
 import time
 
-
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()

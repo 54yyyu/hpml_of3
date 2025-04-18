@@ -459,17 +459,24 @@ def run_benchmarks(configs, num_warmup=5, num_repeats=10):
             num_warmup, num_repeats, results
         )
         
-        benchmark_pytorch_implementation(
-            LigerSwiGLU, "Liger-Triton", "Triton",
-            batch_size, seq_len, hidden_dim, output_dim,
-            num_warmup, num_repeats, results
-        )
+        # Triton implementations - wrapped in try/except as they require GPU hardware
+        try:
+            benchmark_pytorch_implementation(
+                LigerSwiGLU, "Liger-Triton", "Triton",
+                batch_size, seq_len, hidden_dim, output_dim,
+                num_warmup, num_repeats, results
+            )
+        except Exception as e:
+            print(f"Skipping Liger-Triton (Error: {e})")
         
-        benchmark_pytorch_implementation(
-            UnslothSwiGLU, "Unsloth-Triton", "Triton",
-            batch_size, seq_len, hidden_dim, output_dim,
-            num_warmup, num_repeats, results
-        )
+        try:
+            benchmark_pytorch_implementation(
+                UnslothSwiGLU, "Unsloth-Triton", "Triton",
+                batch_size, seq_len, hidden_dim, output_dim,
+                num_warmup, num_repeats, results
+            )
+        except Exception as e:
+            print(f"Skipping Unsloth-Triton (Error: {e})")
         
         # JAX implementations
         if HAS_JAX:
@@ -494,11 +501,14 @@ def run_benchmarks(configs, num_warmup=5, num_repeats=10):
             
             # Only run Triton implementation on GPU platforms
             if jax.devices()[0].platform == 'gpu':
-                benchmark_jax_gated_linear_unit(
-                    "AlphaFold3-GLU-Triton", "triton", "JAX-Triton",
-                    batch_size, seq_len, hidden_dim, output_dim,
-                    num_warmup, num_repeats, results
-                )
+                try:
+                    benchmark_jax_gated_linear_unit(
+                        "AlphaFold3-GLU-Triton", "triton", "JAX-Triton",
+                        batch_size, seq_len, hidden_dim, output_dim,
+                        num_warmup, num_repeats, results
+                    )
+                except Exception as e:
+                    print(f"Skipping AlphaFold3-GLU-Triton (Error: {e})")
     
     return results
 

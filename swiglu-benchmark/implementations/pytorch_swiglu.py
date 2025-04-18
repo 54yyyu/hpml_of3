@@ -8,6 +8,7 @@ for benchmarking purposes.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 class PyTorchSwiGLU(nn.Module):
@@ -141,4 +142,4 @@ class CheckpointedSwiGLU(nn.Module):
         Returns:
             Output tensor of shape [batch_size, seq_len, output_dim]
         """
-        return torch.utils.checkpoint.checkpoint(self._swiglu_forward, x)
+        return checkpoint(self._swiglu_forward, x)

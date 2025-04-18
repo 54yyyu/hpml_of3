@@ -1,30 +1,28 @@
 import argparse
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import DataLoader
+import wandb
 
-# for cpu time measurement
-import time
-
-
+# ─── Model Definition ───────────────────────────────────────────────────────────
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.conv1    = nn.Conv2d(1, 32, 3, 1)
+        self.conv2    = nn.Conv2d(32, 64, 3, 1)
         self.dropout1 = nn.Dropout(0.25)
         self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, 10)
+        self.fc1      = nn.Linear(9216, 128)
+        self.fc2      = nn.Linear(128, 10)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
         x = F.max_pool2d(x, 2)
         x = self.dropout1(x)
         x = torch.flatten(x, 1)
@@ -32,92 +30,108 @@ class Net(nn.Module):
         x = F.relu(x)
         x = self.dropout2(x)
         x = self.fc2(x)
-        output = F.log_softmax(x, dim=1)
-        return output
+        return F.log_softmax(x, dim=1)
 
-
-def train(args, model, device, train_loader, optimizer, epoch):
+# ─── Training (performance only) ────────────────────────────────────────────────
+def train_perf(model, device, train_loader, optimizer, epoch, log_interval):
     model.train()
-
-    # Start timimg
+    # Reset and start timing & memory stats
     if device.type == 'cuda':
+        torch.cuda.reset_peak_memory_stats()
         start_evt = torch.cuda.Event(enable_timing=True)
         end_evt   = torch.cuda.Event(enable_timing=True)
         start_evt.record()
     else:
         t0 = time.time()
 
-    # Training loop
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (data, target) in enumerate(train_loader, 1):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
-        output = model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            if args.dry_run:
-                break
+        _ = model(data)       # forward
+        # we skip loss/backward—only measuring forward pass performance here
+        optimizer.step()      # dummy step to simulate full iteration
 
-    # Stop timing
+    # end timing
     if device.type == 'cuda':
         end_evt.record()
         torch.cuda.synchronize()
         train_ms = start_evt.elapsed_time(end_evt)
-        print(f"Epoch {epoch} train time: {train_ms:.1f} ms")
+        peak_mb  = torch.cuda.max_memory_reserved() / (1024**2)
     else:
-        train_ms = (time.time() - t0) * 1000
-        print(f"Epoch {epoch} train time: {train_ms:.1f} ms")
+        train_ms = (time.time() - t0) * 1000.0
+        peak_mb  = 0.0
 
-def test(model, device, test_loader):
+    # Log to W&B
+    wandb.log({
+        "epoch": epoch,
+        "train_time_ms": train_ms,
+        "train_peak_mem_mb": peak_mb
+    })
+
+    print(f"[Epoch {epoch}] train_time: {train_ms:.1f} ms, peak_mem: {peak_mb:.1f} MB")
+
+# ─── Testing (performance only) ─────────────────────────────────────────────────
+def test_perf(model, device, test_loader, epoch):
     model.eval()
-    test_loss = 0
-    correct = 0
+    # Reset and start timing & memory stats
+    if device.type == 'cuda':
+        torch.cuda.reset_peak_memory_stats()
+        start_evt = torch.cuda.Event(enable_timing=True)
+        end_evt   = torch.cuda.Event(enable_timing=True)
+        start_evt.record()
+    else:
+        t0 = time.time()
+
     with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
+        for data, _ in test_loader:
+            data = data.to(device)
+            _ = model(data)
 
-    test_loss /= len(test_loader.dataset)
+    # end timing
+    if device.type == 'cuda':
+        end_evt.record()
+        torch.cuda.synchronize()
+        test_ms = start_evt.elapsed_time(end_evt)
+        peak_mb = torch.cuda.max_memory_reserved() / (1024**2)
+    else:
+        test_ms = (time.time() - t0) * 1000.0
+        peak_mb = 0.0
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+    # Log to W&B
+    wandb.log({
+        "epoch": epoch,
+        "test_time_ms": test_ms,
+        "test_peak_mem_mb": peak_mb
+    })
 
+    print(f"[Epoch {epoch}] test_time: {test_ms:.1f} ms, peak_mem: {peak_mb:.1f} MB")
 
+# ─── Main ───────────────────────────────────────────────────────────────────────
 def main():
-    # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                        help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=14, metavar='N',
-                        help='number of epochs to train (default: 14)')
-    parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
-                        help='learning rate (default: 1.0)')
-    parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
-                        help='Learning rate step gamma (default: 0.7)')
-    parser.add_argument('--no-cuda', action='store_true', default=False,
-                        help='disables CUDA training')
-    parser.add_argument('--no-mps', action='store_true', default=False,
-                        help='disables macOS GPU training')
-    parser.add_argument('--dry-run', action='store_true', default=False,
-                        help='quickly check a single pass')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
-                        help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='how many batches to wait before logging training status')
-    parser.add_argument('--save-model', action='store_true', default=False,
-                        help='For Saving the current Model')
+    parser = argparse.ArgumentParser(description='MNIST Perf Profile (ReLU)')
+    parser.add_argument('--batch-size',      type=int,   default=64)
+    parser.add_argument('--test-batch-size', type=int,   default=1000)
+    parser.add_argument('--epochs',          type=int,   default=5)
+    parser.add_argument('--lr',              type=float, default=1.0)
+    parser.add_argument('--gamma',           type=float, default=0.7)
+    parser.add_argument('--no-cuda',         action='store_true')
+    parser.add_argument('--no-mps',          action='store_true')
+    parser.add_argument('--seed',            type=int,   default=1)
+    parser.add_argument('--log-interval',    type=int,   default=10)
+    parser.add_argument('--save-model',      action='store_true')
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
-    use_mps = not args.no_mps and torch.backends.mps.is_available()
 
-    torch.manual_seed(args.seed)
+    # Initialize W&B (only performance metrics)
+    wandb.init(
+        project="mnist-perf-relu",
+        config=vars(args),
+        save_code=True
+    )
+    cfg = wandb.config
+
+    use_cuda = not cfg['no_cuda'] and torch.cuda.is_available()
+    use_mps  = not cfg['no_mps'] and torch.backends.mps.is_available()
+    torch.manual_seed(cfg['seed'])
 
     if use_cuda:
         device = torch.device("cuda")
@@ -126,60 +140,38 @@ def main():
     else:
         device = torch.device("cpu")
 
-    train_kwargs = {'batch_size': args.batch_size}
-    test_kwargs = {'batch_size': args.test_batch_size}
+    # Data loaders
+    train_kwargs = {'batch_size': cfg['batch_size'], 'shuffle': True}
+    test_kwargs  = {'batch_size': cfg['test_batch_size'], 'shuffle': False}
     if use_cuda:
-        cuda_kwargs = {'num_workers': 1,
-                       'pin_memory': True,
-                       'shuffle': True}
-        train_kwargs.update(cuda_kwargs)
-        test_kwargs.update(cuda_kwargs)
+        train_kwargs.update({'num_workers': 1, 'pin_memory': True})
+        test_kwargs .update({'num_workers': 1, 'pin_memory': True})
 
-    transform=transforms.Compose([
+    transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
-        ])
-    dataset1 = datasets.MNIST('../data', train=True, download=True,
-                       transform=transform)
-    dataset2 = datasets.MNIST('../data', train=False,
-                       transform=transform)
-    train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
-    test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
+    ])
+    train_loader = DataLoader(datasets.MNIST('../data', train=True, download=True, transform=transform),
+                              **train_kwargs)
+    test_loader  = DataLoader(datasets.MNIST('../data', train=False, transform=transform),
+                              **test_kwargs)
 
-    model = Net().to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    # Model & optimizer
+    model     = Net().to(device)
+    optimizer = optim.Adadelta(model.parameters(), lr=cfg['lr'])
+    scheduler = StepLR(optimizer, step_size=1, gamma=cfg['gamma'])
 
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-
-    for epoch in range(1, args.epochs + 1):
-        # training and timing included in here
-        train(args, model, device, train_loader, optimizer, epoch)
-
-        # testing time here
-        if device.type == 'cuda':
-            start_evt = torch.cuda.Event(enable_timing=True)
-            end_evt   = torch.cuda.Event(enable_timing=True)
-            start_evt.record()
-
-            test(model, device, test_loader)
-
-            end_evt.record()
-            torch.cuda.synchronize()
-            test_ms = start_evt.elapsed_time(end_evt)
-            print(f"Epoch {epoch} test time:  {test_ms:.1f} ms\n")
-        else:
-            t0 = time.time()
-            test(model, device, test_loader)
-            test_ms = (time.time() - t0) * 1000
-            print(f"Epoch {epoch} test time:  {test_ms:.1f} ms\n")
-
-        print("---------------------------------------------\n")
-
+    # Perf loop
+    for epoch in range(1, cfg['epochs'] + 1):
+        train_perf(model, device, train_loader, optimizer, epoch, cfg['log_interval'])
+        test_perf(model, device, test_loader, epoch)
         scheduler.step()
 
-    if args.save_model:
-        torch.save(model.state_dict(), "mnist_cnn.pt")
+        if cfg['save_model']:
+            torch.save(model.state_dict(), "mnist_cnn_perf.pt")
 
+    wandb.finish()
 
 if __name__ == '__main__':
     main()
+

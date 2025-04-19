@@ -70,7 +70,7 @@ def swiglu_fg_kernel(e, g):
     h = torch.empty((batch, seq_len, hd), dtype=e.dtype, device=e.device)
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
     with torch_cuda_device(e.device):
-        fg_kernel[grid](e, g, h, n_elements, BLOCK_SIZE=1024)
+        fg_kernel[grid](e.reshape(-1), g.reshape(-1), h.reshape(-1), n_elements, BLOCK_SIZE=1024)
     return h
 
 
@@ -115,11 +115,16 @@ def swiglu_DWf_DW_dfg_kernel(DW, e, g):
     Returns:
         Tuple of (output, gate_grad, proj_grad)
     """
-    batch_seq_len, hd = e.shape
     n_elements = e.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
     with torch_cuda_device(e.device):
-        DWf_DW_dfg_kernel[grid](DW, e, g, n_elements, BLOCK_SIZE=1024)
+        DWf_DW_dfg_kernel[grid](
+            DW.reshape(-1), 
+            e.reshape(-1), 
+            g.reshape(-1), 
+            n_elements, 
+            BLOCK_SIZE=1024
+        )
     return DW, e, g
 
 
@@ -144,13 +149,14 @@ class UnslothSwiGLUFunction(torch.autograd.Function):
         # Create clones to avoid modifying the saved tensors
         gate_clone = gate.clone()
         proj_clone = proj.clone()
+        grad_clone = grad_output.clone()
         
         # Apply backward kernel
         # The kernel modifies the tensors in-place and returns:
         # - grad_output: Contains the output (f * g)
         # - gate_clone: Contains df = grad_output * f
         # - proj_clone: Contains de
-        _, dgate, dproj = swiglu_DWf_DW_dfg_kernel(grad_output, gate_clone, proj_clone)
+        _, dgate, dproj = swiglu_DWf_DW_dfg_kernel(grad_clone, gate_clone, proj_clone)
         
         return dproj, dgate
 
@@ -184,5 +190,14 @@ class UnslothSwiGLU(nn.Module):
         gate = self.w_gate(x)
         proj = self.w_proj(x)
         
-        # Use custom autograd function for SwiGLU
-        return UnslothSwiGLUFunction.apply(gate, proj)
+        # Handle cases where Triton kernels might not work
+        if not torch.cuda.is_available():
+            return F.silu(gate) * proj
+            
+        try:
+            # Use custom autograd function for SwiGLU
+            return UnslothSwiGLUFunction.apply(gate, proj)
+        except Exception as e:
+            # Fallback to standard PyTorch implementation if Triton fails
+            print(f"Triton kernel failed, falling back to PyTorch: {e}")
+            return F.silu(gate) * proj

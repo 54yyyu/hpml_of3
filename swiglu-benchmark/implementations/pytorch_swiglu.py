@@ -142,4 +142,11 @@ class CheckpointedSwiGLU(nn.Module):
         Returns:
             Output tensor of shape [batch_size, seq_len, output_dim]
         """
-        return checkpoint(self._swiglu_forward, x)
+        # Fixed: correctly import the checkpoint function and
+        # explicitly set use_reentrant=False
+        return checkpoint(
+            self._swiglu_forward, 
+            x, 
+            use_reentrant=False,
+            preserve_rng_state=False
+        )

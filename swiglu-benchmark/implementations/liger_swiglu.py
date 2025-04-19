@@ -158,8 +158,11 @@ class LigerSiLUMulFunction(torch.autograd.Function):
     @ensure_contiguous
     def backward(ctx, dc):
         a, b = ctx.saved_tensors
-        a, b = swiglu_backward(a, b, dc)
-        return a, b
+        # Use clones to avoid modifying saved tensors
+        a_clone = a.clone()
+        b_clone = b.clone()
+        da, db = swiglu_backward(a_clone, b_clone, dc)
+        return da, db
 
 
 class LigerSwiGLU(nn.Module):

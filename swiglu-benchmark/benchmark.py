@@ -32,14 +32,20 @@ from implementations.unsloth_swiglu import UnslothSwiGLU
 try:
     import jax
     import jax.numpy as jnp
+    # Use the correct import for tree_map based on JAX version
+    try:
+        from jax import tree_map
+    except (ImportError, AttributeError):
+        try:
+            from jax.tree import map as tree_map
+        except (ImportError, AttributeError):
+            from jax.tree_util import tree_map
+            
     from implementations.alphafold3_swiglu import (
         AlphaFold3SwiGLU,
-        MemoryOptimizedSwiGLU as JAXMemoryOptimizedSwiGLU,
-        gated_linear_unit,
-        PallasGatedLinearUnit,
-        GatedLinearUnit
+        MemoryOptimizedSwiGLU as JAXMemoryOptimizedSwiGLU
     )
-    HAS_JAX = True
+    HAS_JAX = False # Set to False for now, skipping AlphaFold3 implementations
 except ImportError:
     HAS_JAX = False
     print("JAX not found, skipping AlphaFold3 implementations")
@@ -59,8 +65,10 @@ def set_seed(seed):
 def get_gpu_memory_usage():
     """Get current GPU memory usage in MB."""
     if torch.cuda.is_available():
-        return torch.cuda.memory_allocated() / 1024 / 1024
-    return 0
+        allocated = torch.cuda.memory_allocated() / 1024 / 1024
+        reserved = torch.cuda.memory_reserved() / 1024 / 1024
+        return allocated, reserved
+    return 0, 0
 
 
 def clear_gpu_memory():
@@ -77,9 +85,9 @@ class BenchmarkResult:
         self.results = []
     
     def add_result(self, name, input_size, batch_size, seq_len, hidden_dim, output_dim,
-                  forward_time, backward_time, peak_memory, model_type):
+                  forward_time, backward_time, peak_memory, model_type, allocated_memory=None):
         """Add a benchmark result."""
-        self.results.append({
+        result_dict = {
             'name': name,
             'input_size': input_size,
             'batch_size': batch_size,
@@ -91,7 +99,12 @@ class BenchmarkResult:
             'total_time': forward_time + backward_time,
             'peak_memory': peak_memory,
             'model_type': model_type
-        })
+        }
+        
+        if allocated_memory is not None:
+            result_dict['allocated_memory'] = allocated_memory
+            
+        self.results.append(result_dict)
     
     def to_dataframe(self):
         """Convert results to pandas DataFrame."""
@@ -192,26 +205,35 @@ def benchmark_pytorch_implementation(model_class, model_name, model_type,
     
     # Create model and input
     model = model_class(hidden_dim, output_dim).cuda()
-    x = torch.randn(batch_size, seq_len, hidden_dim, device='cuda')
+    x = torch.randn(batch_size, seq_len, hidden_dim, device='cuda', requires_grad=True)
     
     # Warmup
     for _ in range(num_warmup):
+        model.zero_grad()
         y = model(x)
         loss = y.sum()
         loss.backward()
     
     clear_gpu_memory()
     
-    # Measure forward pass time
+    # Record initial memory state
     torch.cuda.synchronize()
-    start_memory = get_gpu_memory_usage()
-    start_time = time.time()
+    torch.cuda.reset_peak_memory_stats()
+    initial_allocated, initial_reserved = get_gpu_memory_usage()
     
     forward_times = []
     backward_times = []
+    allocated_memories = []
     peak_memories = []
     
     for _ in range(num_repeats):
+        # Clear gradients
+        model.zero_grad()
+        if x.grad is not None:
+            x.grad.zero_()
+        
+        torch.cuda.reset_peak_memory_stats()
+        
         # Forward pass
         torch.cuda.synchronize()
         t0 = time.time()
@@ -229,15 +251,19 @@ def benchmark_pytorch_implementation(model_class, model_name, model_type,
         t1 = time.time()
         backward_times.append((t1 - t0) * 1000)  # Convert to ms
         
-        # Memory usage
-        peak_memories.append(get_gpu_memory_usage() - start_memory)
+        # Get peak memory usage for this iteration
+        current_allocated, current_reserved = get_gpu_memory_usage()
+        peak_allocated = torch.cuda.max_memory_allocated() / 1024 / 1024
+        peak_reserved = torch.cuda.max_memory_reserved() / 1024 / 1024
         
-        # Clear gradients for next iteration
-        model.zero_grad()
+        # Store memory metrics
+        allocated_memories.append(peak_allocated - initial_allocated)
+        peak_memories.append(peak_reserved - initial_reserved)
     
     # Calculate averages
     avg_forward_time = sum(forward_times) / len(forward_times)
     avg_backward_time = sum(backward_times) / len(backward_times)
+    avg_allocated_memory = sum(allocated_memories) / len(allocated_memories)
     avg_peak_memory = sum(peak_memories) / len(peak_memories)
     
     # Add result
@@ -251,9 +277,13 @@ def benchmark_pytorch_implementation(model_class, model_name, model_type,
         output_dim=output_dim,
         forward_time=avg_forward_time,
         backward_time=avg_backward_time,
-        peak_memory=avg_peak_memory,
-        model_type=model_type
+        peak_memory=avg_peak_memory,  # Use the reserved memory as peak
+        model_type=model_type,
+        allocated_memory=avg_allocated_memory
     )
+    
+    # Print memory stats for debugging
+    print(f"  Memory usage (MB): Allocated: {avg_allocated_memory:.1f}, Reserved: {avg_peak_memory:.1f}")
     
     clear_gpu_memory()
     del model, x, y
@@ -314,96 +344,8 @@ def benchmark_jax_implementation(model_class, model_name, model_type,
         # Backward pass
         start_time = time.time()
         _, grad = backward_jit(variables, x)
-        grad = jax.tree_map(lambda x: x.block_until_ready(), grad)
-        end_time = time.time()
-        backward_times.append((end_time - start_time) * 1000)  # Convert to ms
-    
-    # Calculate averages
-    avg_forward_time = sum(forward_times) / len(forward_times)
-    avg_backward_time = sum(backward_times) / len(backward_times)
-    
-    # Add result
-    input_size = f"{batch_size}x{seq_len}x{hidden_dim}"
-    results.add_result(
-        name=model_name,
-        input_size=input_size,
-        batch_size=batch_size,
-        seq_len=seq_len,
-        hidden_dim=hidden_dim,
-        output_dim=output_dim,
-        forward_time=avg_forward_time,
-        backward_time=avg_backward_time,
-        peak_memory=0,  # Unable to measure directly in JAX
-        model_type=model_type
-    )
-
-
-def benchmark_jax_gated_linear_unit(model_name, implementation, model_type,
-                                   batch_size, seq_len, hidden_dim, output_dim,
-                                   num_warmup, num_repeats, results):
-    """Benchmark JAX GatedLinearUnit implementations directly.
-    
-    This allows testing the core gated_linear_unit function with different
-    implementation options.
-    
-    Args:
-        model_name: Name of the implementation for reporting
-        implementation: Implementation to use ('xla' or 'triton')
-        model_type: Type of model for categorization
-        batch_size, seq_len, hidden_dim, output_dim: Dimensions for the input
-        num_warmup, num_repeats: Number of warm-up and benchmark iterations
-        results: BenchmarkResult object to store results
-    """
-    if not HAS_JAX:
-        print(f"Skipping {model_name} (JAX not available)")
-        return
-    
-    print(f"Benchmarking {model_name}...")
-    
-    # Initialize input and weights
-    key = jax.random.PRNGKey(0)
-    key1, key2 = jax.random.split(key)
-    x = jax.random.normal(key1, (batch_size, seq_len, hidden_dim))
-    weight = jax.random.normal(key2, (hidden_dim, 2, output_dim)) * 0.02
-    
-    # Define functions for benchmarking
-    def forward_fn(x, weight):
-        return gated_linear_unit(
-            x=x,
-            weight=weight,
-            activation=jax.nn.swish,
-            precision=None,
-            implementation=implementation
-        )
-    
-    def loss_fn(x, weight):
-        y = forward_fn(x, weight)
-        return jnp.sum(y)
-    
-    # Create JIT-compiled versions
-    forward_jit = jax.jit(forward_fn)
-    backward_jit = jax.jit(jax.value_and_grad(loss_fn, argnums=1))
-    
-    # Warmup
-    for _ in range(num_warmup):
-        forward_jit(x, weight).block_until_ready()
-        backward_jit(x, weight)[0].block_until_ready()
-    
-    # Measure performance
-    forward_times = []
-    backward_times = []
-    
-    for _ in range(num_repeats):
-        # Forward pass
-        start_time = time.time()
-        y = forward_jit(x, weight).block_until_ready()
-        end_time = time.time()
-        forward_times.append((end_time - start_time) * 1000)  # Convert to ms
-        
-        # Backward pass
-        start_time = time.time()
-        _, grad = backward_jit(x, weight)
-        grad = jax.tree_map(lambda x: x.block_until_ready(), grad)
+        # Use the correct tree_map function (imported at the top)
+        grad = tree_map(lambda x: x.block_until_ready(), grad)
         end_time = time.time()
         backward_times.append((end_time - start_time) * 1000)  # Convert to ms
     
@@ -459,24 +401,17 @@ def run_benchmarks(configs, num_warmup=5, num_repeats=10):
             num_warmup, num_repeats, results
         )
         
-        # Triton implementations - wrapped in try/except as they require GPU hardware
-        try:
-            benchmark_pytorch_implementation(
-                LigerSwiGLU, "Liger-Triton", "Triton",
-                batch_size, seq_len, hidden_dim, output_dim,
-                num_warmup, num_repeats, results
-            )
-        except Exception as e:
-            print(f"Skipping Liger-Triton (Error: {e})")
+        benchmark_pytorch_implementation(
+            LigerSwiGLU, "Liger-Triton", "Triton",
+            batch_size, seq_len, hidden_dim, output_dim,
+            num_warmup, num_repeats, results
+        )
         
-        try:
-            benchmark_pytorch_implementation(
-                UnslothSwiGLU, "Unsloth-Triton", "Triton",
-                batch_size, seq_len, hidden_dim, output_dim,
-                num_warmup, num_repeats, results
-            )
-        except Exception as e:
-            print(f"Skipping Unsloth-Triton (Error: {e})")
+        benchmark_pytorch_implementation(
+            UnslothSwiGLU, "Unsloth-Triton", "Triton",
+            batch_size, seq_len, hidden_dim, output_dim,
+            num_warmup, num_repeats, results
+        )
         
         # JAX implementations
         if HAS_JAX:
@@ -491,24 +426,6 @@ def run_benchmarks(configs, num_warmup=5, num_repeats=10):
                 batch_size, seq_len, hidden_dim, output_dim,
                 num_warmup, num_repeats, results
             )
-            
-            # Test direct gated_linear_unit implementations
-            benchmark_jax_gated_linear_unit(
-                "AlphaFold3-GLU-XLA", "xla", "JAX-Direct",
-                batch_size, seq_len, hidden_dim, output_dim,
-                num_warmup, num_repeats, results
-            )
-            
-            # Only run Triton implementation on GPU platforms
-            if jax.devices()[0].platform == 'gpu':
-                try:
-                    benchmark_jax_gated_linear_unit(
-                        "AlphaFold3-GLU-Triton", "triton", "JAX-Triton",
-                        batch_size, seq_len, hidden_dim, output_dim,
-                        num_warmup, num_repeats, results
-                    )
-                except Exception as e:
-                    print(f"Skipping AlphaFold3-GLU-Triton (Error: {e})")
     
     return results
 
@@ -518,9 +435,15 @@ def main():
     parser = argparse.ArgumentParser(description='SwiGLU Benchmark')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--output-dir', type=str, default='results', help='Output directory')
+    parser.add_argument('--small-only', action='store_true', help='Run only small configuration for testing')
+    parser.add_argument('--no-jax', action='store_true', help='Skip JAX implementations')
     args = parser.parse_args()
     
     set_seed(args.seed)
+    
+    if args.no_jax:
+        global HAS_JAX
+        HAS_JAX = False
     
     # Check for CUDA
     if not torch.cuda.is_available():
@@ -557,7 +480,11 @@ def main():
         'output_dim': 4096
     }
     
-    configs = [small_config, medium_config, large_config, alphafold3_config]
+    # Select configurations to run
+    if args.small_only:
+        configs = [small_config]
+    else:
+        configs = [small_config, medium_config, large_config, alphafold3_config]
     
     # Run benchmarks
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Load modules
-module load cuda12.2/
-module load mamba
+# # Load modules
+module load cuda
+# module load mamba
 
-# Initialize mamba
+# # Initialize mamba
 mamba init
-source /burg/home/yy3448/.bashrc
+source ~/.bashrc
 
 # Create the mamba environment
 if mamba env list | grep -q 'hpml'; then
@@ -19,7 +19,7 @@ else
 fi
 
 # Install PyTorch with CUDA
-mamba install pytorch torchvision pytorch-cuda=12.4 -c pytorch -c nvidia --yes
+mamba install pytorch=2.5 torchvision pytorch-cuda=12.4 -c pytorch -c nvidia --yes
 
 # Install Triton
 pip install triton

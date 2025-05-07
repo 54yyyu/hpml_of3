@@ -20,11 +20,12 @@ class Net(nn.Module):
         self.dropout1 = nn.Dropout(0.25)
         self.dropout2 = nn.Dropout(0.5)
 
-        # replace: self.fc1 = nn.Linear(9216, 128) with:
-        self.fc1_a    = nn.Linear(9216, 128)
-        self.fc1_b    = nn.Linear(9216, 128)
+        # buff up the size to really see performance difference
+        self.fc1_a = nn.Linear(9216, 4096)
+        self.fc1_b = nn.Linear(9216, 4096)
 
-        self.fc2 = nn.Linear(128, 10)
+        # final 10-class head
+        self.fc2   = nn.Linear(4096, 10)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -39,6 +40,7 @@ class Net(nn.Module):
         # x = self.fc1(x)
         # x = F.relu(x)
         # with
+        # first SwiGLU block
         a = self.fc1_a(x)
         b = self.fc1_b(x)
         x = LigerSiLUMulFunction.apply(a, b)
@@ -108,8 +110,8 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=14, metavar='N',
-                        help='number of epochs to train (default: 14)')
+    parser.add_argument('--epochs', type=int, default=4, metavar='N',
+                        help='number of epochs to train (default: 4)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',

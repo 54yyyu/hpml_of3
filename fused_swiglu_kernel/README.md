@@ -17,7 +17,7 @@ Provide a drop-in replacement for the "two linears + LigerSiLUMulFunction.apply"
 
 Copy the following into your project root:
 
-* `fused_kernel.py` (implements `swiglu_fused_kernel`)
+* `fused_forward_kernel.py` (implements `swiglu_fused_forward_kernel`)
 * `fused_backward_kernel.py` (implements `swiglu_fused_backward_kernel`)
 * `fused_swiglu_layer.py` (wrapper module)
 * *\[optional]* `fused_weight_grad_kernel.py` (for full weight-grad fusion)
@@ -25,11 +25,11 @@ Copy the following into your project root:
 
 ### 4. API Overview
 
-#### `fused_kernel.py`
+#### `fused_forward_kernel.py`
 
 ```python
 @triton.jit
-def swiglu_fused_kernel(
+def swiglu_fused_forward_kernel(
     X_ptr, Wf_ptr, Out_ptr,
     B: tl.constexpr, D: tl.constexpr,
     stride_xb, stride_xd,
@@ -71,7 +71,7 @@ def swiglu_fused_weight_grad_kernel(
 ```python
 import torch, triton
 from torch import nn, autograd
-from fused_kernel import swiglu_fused_kernel
+from fused_forward_kernel import swiglu_fused_forward_kernel
 from fused_backward_kernel import swiglu_fused_backward_kernel
 # optional import of fused_weight_grad_kernel if you need to learn Wf
 
@@ -83,7 +83,7 @@ class _FusedSwiGLUFunction(autograd.Function):
         ctx.save_for_backward(x, Wf)
         ctx.block = block
         grid = (triton.cdiv(B, block), triton.cdiv(D, block))
-        swiglu_fused_kernel[grid](
+        swiglu_fused_forward_kernel[grid](
             x, Wf, z,
             B, D,
             x.stride(0), x.stride(1),

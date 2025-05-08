@@ -160,3 +160,23 @@ Epoch 4 test time:  2092.7 ms
 
 ---------------------------------------------
 ```
+
+### Memory test output
+```
+python mlp_memory_compare.py 
+B=64   D=2048  Liger peak  115.8 MB   Fused peak   82.8 MB   Difference (Liger vs. Fused)  -33.0 MB
+B=64   D=4096  Liger peak  407.3 MB   Fused peak  277.3 MB   Difference (Liger vs. Fused) -130.0 MB
+B=256  D=2048  Liger peak  126.3 MB   Fused peak   90.3 MB   Difference (Liger vs. Fused)  -36.0 MB
+B=256  D=4096  Liger peak  428.3 MB   Fused peak  292.3 MB   Difference (Liger vs. Fused) -136.0 MB
+B=1024 D=2048  Liger peak  168.3 MB   Fused peak  120.3 MB   Difference (Liger vs. Fused)  -48.0 MB
+B=1024 D=4096  Liger peak  512.3 MB   Fused peak  352.3 MB   Difference (Liger vs. Fused) -160.0 MB
+
+python deep_memory_compare.py 
+  4 layers: Liger peak  352.3 MB   Fused peak  208.3 MB   Memory saved  144.0 MB
+  8 layers: Liger peak  632.3 MB   Fused peak  344.3 MB   Memory saved  288.0 MB
+ 16 layers: Liger peak 1192.3 MB   Fused peak  616.3 MB   Memory saved  576.0 MB
+ 32 layers: Liger peak 2312.3 MB   Fused peak 1160.3 MB   Memory saved 1152.0 MB
+ 64 layers: Liger peak 4552.3 MB   Fused peak 2248.3 MB   Memory saved 2304.0 MB
+128 layers: Liger peak 9032.3 MB   Fused peak 4424.3 MB   Memory saved 4608.0 MB
+256 layers: Liger peak 17992.3 MB   Fused peak 8776.3 MB   Memory saved 9216.0 MB
+```

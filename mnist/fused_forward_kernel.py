@@ -27,7 +27,7 @@ def swiglu_fused_forward_kernel(
     )
     a = tl.dot(x_tile, w_a)
     b = tl.dot(x_tile, w_b)
-    z = a * tl.sigmoid(b)
+    z = a * b * tl.sigmoid(b)
     
     tl.store(
         Z_ptr + offs_m[:,None]*stride_zb + offs_n[None,:]*stride_zd,

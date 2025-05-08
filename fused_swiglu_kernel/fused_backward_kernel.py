@@ -51,8 +51,8 @@ def swiglu_fused_backward_kernel(
     s = tl.sigmoid(b)                          # gate σ(b)
 
     # 7) compute branch gradients
-    dA = dz_tile * s                           # ∂L/∂A
-    dB = dz_tile * a * s * (1 - s)             # ∂L/∂B
+    dA = dz_tile * (b * s)                                 # ∂L/∂A
+    dB = dz_tile * (a * s + a * b * s * (1 - s))           # ∂L/∂B
 
     # 8) compute dX = dA·W₁ₐᵀ + dB·W₁ᵦᵀ
     dXa = tl.dot(dA, tl.trans(w_a))

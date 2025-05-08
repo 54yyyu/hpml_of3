@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import StepLR
 import time
 
 # for our fused implementation
-from fused_swiglu_layer import FusedSwiGLU
+from fused_swiglu_layer_WF import FusedSwiGLU
 
 class Net(nn.Module):
     def __init__(self):

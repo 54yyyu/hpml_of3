@@ -3,8 +3,11 @@ import torch
 import triton
 import torch.nn.functional as F
 from torch import nn, autograd
+
+# our implementation
 from fused_forward_kernel import swiglu_fused_forward_kernel
 from fused_backward_kernel import swiglu_fused_backward_kernel
+from fused_weight_grad_kernel import swiglu_fused_weight_grad_kernel
 
 class _FusedSwiGLUFunction(autograd.Function):
     @staticmethod
@@ -15,7 +18,7 @@ class _FusedSwiGLUFunction(autograd.Function):
         # allocate output
         z = torch.empty(B, D, device=x.device, dtype=x.dtype)
         # save for backward
-        ctx.save_for_backward(x, Wf, z)
+        ctx.save_for_backward(x, Wf)
         ctx.block = block
 
         # launch Triton forward
@@ -30,9 +33,10 @@ class _FusedSwiGLUFunction(autograd.Function):
         )
         return z
 
+    # HERE IS THE ONE WITHOUT dWf, which achieves much better speed
     @staticmethod
     def backward(ctx, dZ):
-        x, Wf, z = ctx.saved_tensors
+        x, Wf = ctx.saved_tensors
         block = ctx.block
         B = x.shape[0] # batch_size
         D = Wf.shape[1] // 2 # hidden_dim
@@ -53,31 +57,6 @@ class _FusedSwiGLUFunction(autograd.Function):
         )
 
         return dX, None, None
-
-        # compute weight grads with plain PyTorch matmuls
-        # split Wf into two halves for gradients
-        # dW1a = x.t() @ (dZ * sigmoid(z_half)) etc.
-        # for simplicity we return None here (no Wf update)
-
-        # # here is the gradient computation
-        # W1a, W1b = Wf.split(D, dim=1)
-        # a = x @ W1a
-        # b = x @ W1b
-        # s = torch.sigmoid(b)
-
-        # # branch gradients
-        # dA = dZ * s
-        # dB = dZ * a * s * (1 - s)
-
-        # # compute dW1a, dW1b
-        # dW1a = x.transpose(0,1) @ dA   # [in_features, D]
-        # dW1b = x.transpose(0,1) @ dB   # [in_features, D]
-
-        # # concat to match Wf shape [in_features, 2*D]
-        # dWf = torch.cat([dW1a, dW1b], dim=1)
-
-        # no gradient w.r.t. block parameter
-        # return dX, dWf, None
 
 
 class FusedSwiGLU(nn.Module):

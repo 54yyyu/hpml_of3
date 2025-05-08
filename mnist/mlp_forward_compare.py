@@ -42,7 +42,7 @@ def bench_fused(B, D, iters=100, block=64):
             BLOCK_M=block, BLOCK_N=block)
         _ = Z @ Wf[:, :D]
     torch.cuda.synchronize()
-    print(f"Fused  B={B:<4} D={D:<4} → {(time.perf_counter()-t0)/iters*1000:6.2f} ms")
+    print(f"Fused  B={B:<4} D={D:<4} -> {(time.perf_counter()-t0)/iters*1000:6.2f} ms")
 
 if __name__ == "__main__":
     for B in [64, 256, 1024]:

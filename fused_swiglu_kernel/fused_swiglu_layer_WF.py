@@ -33,20 +33,23 @@ class _FusedSwiGLUFunction(autograd.Function):
         )
         return z
 
-    # HERE IS THE ONE WITHOUT dWf, which achieves much better speed
+    # HERE IS THE ONE WITH dWf, which 
     @staticmethod
     def backward(ctx, dZ):
+        import torch, triton
+        from fused_backward_kernel import swiglu_fused_backward_kernel
+        from fused_weight_grad_kernel import swiglu_fused_weight_grad_kernel
+
+        # recover saved inputs
         x, Wf = ctx.saved_tensors
         block = ctx.block
-        B = x.shape[0] # batch_size
-        D = Wf.shape[1] // 2 # hidden_dim
+        B = x.shape[0]              # batch size
+        D = Wf.shape[1] // 2        # hidden dim
 
-        # allocate dX
+        # 1) fused dX
         dX = torch.empty_like(x)
-
-        # launch Triton backward (computes dX)
-        grid = (triton.cdiv(B, block), triton.cdiv(D, block))
-        swiglu_fused_backward_kernel[grid](
+        grid2d = (triton.cdiv(B, block), triton.cdiv(D, block))
+        swiglu_fused_backward_kernel[grid2d](
             x,   Wf, dZ, dX,
             B, D,
             x.stride(0),   x.stride(1),
@@ -56,8 +59,27 @@ class _FusedSwiGLUFunction(autograd.Function):
             BLOCK_M=block, BLOCK_N=block
         )
 
-        return dX, None, None
+        # 2) fused weight-gradient
+        I = x.shape[1]              # input feature dim
+        dWf = torch.empty(I, 2*D, device=x.device, dtype=x.dtype)
+        # choose tile sizes for (B, I, D) dimensions
+        BLOCK_B, BLOCK_I, BLOCK_D = 64, 64, 64
+        grid3d = (
+            triton.cdiv(B, BLOCK_B),
+            triton.cdiv(I, BLOCK_I),
+            triton.cdiv(D, BLOCK_D)
+        )
+        swiglu_fused_weight_grad_kernel[grid3d](
+            x, dZ, dWf,
+            B, I, D,
+            x.stride(0),    x.stride(1),
+            dZ.stride(0),   dZ.stride(1),
+            dWf.stride(0),  dWf.stride(1),
+            BLOCK_B=BLOCK_B, BLOCK_I=BLOCK_I, BLOCK_D=BLOCK_D
+        )
 
+        # return gradients for x, Wf, and None for block
+        return dX, dWf, None
 
 class FusedSwiGLU(nn.Module):
     """

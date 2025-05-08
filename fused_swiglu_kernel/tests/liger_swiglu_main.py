@@ -9,8 +9,8 @@ from torch.optim.lr_scheduler import StepLR
 # for cpu time measurement
 import time
 
-# for our fused implementation
-from fused_swiglu_layer import FusedSwiGLU
+# for liger-kernel swiglu implementation
+from liger_kernel.ops.swiglu import LigerSiLUMulFunction
 
 class Net(nn.Module):
     def __init__(self):
@@ -20,9 +20,9 @@ class Net(nn.Module):
         self.dropout1 = nn.Dropout(0.25)
         self.dropout2 = nn.Dropout(0.5)
 
-        # fused SwiGLU head instead of two separate linears
-        # this is basically fc1 here
-        self.fc1 = FusedSwiGLU(in_features=9216, hidden_dim=4096, block=64)
+        # buff up the size to really see performance difference
+        self.fc1_a = nn.Linear(9216, 4096)
+        self.fc1_b = nn.Linear(9216, 4096)
 
         # final 10-class head
         self.fc2   = nn.Linear(4096, 10)
@@ -36,10 +36,14 @@ class Net(nn.Module):
         x = self.dropout1(x)
         x = torch.flatten(x, 1)
 
-        # fused SwiGLU block
-        # this is basically fc1 here
-        x = self.fc1(x)
-        assert x.shape[1] == 4096, f"Expected 4096, got {x.shape[1]}"
+        # replace:
+        # x = self.fc1(x)
+        # x = F.relu(x)
+        # with
+        # first SwiGLU block
+        a = self.fc1_a(x)
+        b = self.fc1_b(x)
+        x = LigerSiLUMulFunction.apply(a, b)
 
         x = self.dropout2(x)
         x = self.fc2(x)

@@ -1,7 +1,7 @@
 import triton, triton.language as tl
 
 @triton.jit
-def swiglu_fused_kernel(
+def swiglu_fused_forward_kernel(
     X_ptr, W_ptr, Z_ptr,
     B, D,
     stride_xb, stride_xd,
@@ -28,6 +28,7 @@ def swiglu_fused_kernel(
     a = tl.dot(x_tile, w_a)
     b = tl.dot(x_tile, w_b)
     z = a * tl.sigmoid(b)
+    
     tl.store(
         Z_ptr + offs_m[:,None]*stride_zb + offs_n[None,:]*stride_zd,
         z, mask=(offs_m[:,None]<B)&(offs_n[None,:]<D)

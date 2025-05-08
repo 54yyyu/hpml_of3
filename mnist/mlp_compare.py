@@ -1,6 +1,6 @@
 import torch, time, triton
 from liger_kernel.ops.swiglu import LigerSiLUMulFunction
-from fused_kernel import swiglu_fused_kernel
+from fused_forward_kernel import swiglu_fused_forward_kernel
 
 def bench_liger(B, D, iters=100):
     W1a, W1b, W2 = [torch.randn(D, D, device='cuda') for _ in range(3)]
@@ -25,7 +25,7 @@ def bench_fused(B, D, iters=100, block=64):
     grid = (triton.cdiv(B,block), triton.cdiv(D,block))
     # warm
     for _ in range(10):
-        swiglu_fused_kernel[grid](x, Wf, Z, B, D,
+        swiglu_fused_forward_kernel[grid](x, Wf, Z, B, D,
             x.stride(0), x.stride(1),
             Wf.stride(0), Wf.stride(1),
             Z.stride(0), Z.stride(1),
@@ -35,7 +35,7 @@ def bench_fused(B, D, iters=100, block=64):
     # time
     t0 = time.perf_counter()
     for _ in range(iters):
-        swiglu_fused_kernel[grid](x, Wf, Z, B, D,
+        swiglu_fused_forward_kernel[grid](x, Wf, Z, B, D,
             x.stride(0), x.stride(1),
             Wf.stride(0), Wf.stride(1),
             Z.stride(0), Z.stride(1),

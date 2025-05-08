@@ -1,6 +1,6 @@
 import torch, time, triton, torch.optim as optim
 from liger_kernel.ops.swiglu import LigerSiLUMulFunction
-from fused_kernel import swiglu_fused_kernel
+from fused_forward_kernel import swiglu_fused_forward_kernel
 
 def train_liger(B, D, iters=50):
     W1a = torch.nn.Parameter(torch.randn(D, D, device='cuda'))
@@ -32,7 +32,7 @@ def train_fused(B, D, iters=50, block=64):
     grid = (triton.cdiv(B,block), triton.cdiv(D,block))
     for _ in range(5):  # warmup
         opt.zero_grad()
-        swiglu_fused_kernel[grid](x, Wf, Z, B, D,
+        swiglu_fused_forward_kernel[grid](x, Wf, Z, B, D,
             x.stride(0), x.stride(1),
             Wf.stride(0), Wf.stride(1),
             Z.stride(0), Z.stride(1),
@@ -43,7 +43,7 @@ def train_fused(B, D, iters=50, block=64):
     t0 = time.perf_counter()
     for _ in range(iters):
         opt.zero_grad()
-        swiglu_fused_kernel[grid](x, Wf, Z, B, D,
+        swiglu_fused_forward_kernel[grid](x, Wf, Z, B, D,
             x.stride(0), x.stride(1),
             Wf.stride(0), Wf.stride(1),
             Z.stride(0), Z.stride(1),

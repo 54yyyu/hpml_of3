@@ -22,7 +22,7 @@ class Net(nn.Module):
 
         # fused SwiGLU head instead of two separate linears
         # this is basically fc1 here
-        self.swi_glu = FusedSwiGLU(in_features=9216, hidden_dim=4096, block=64)
+        self.fc1 = FusedSwiGLU(in_features=9216, hidden_dim=4096, block=64)
 
         # final 10-class head
         self.fc2   = nn.Linear(4096, 10)
@@ -38,7 +38,8 @@ class Net(nn.Module):
 
         # fused SwiGLU block
         # this is basically fc1 here
-        x = self.swi_glu(x)
+        x = self.fc1(x)
+        assert x.shape[1] == 4096, f"Expected 4096, got {x.shape[1]}"
 
         x = self.dropout2(x)
         x = self.fc2(x)

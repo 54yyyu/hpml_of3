@@ -1,24 +1,38 @@
 # TESTING
 
 ## Output of the tests
-All of the tests are done on an NVIDIA L4. The tests are included in test/.
-To use it, place them in the same directory as the kernel.
+All of the tests are done on an NVIDIA L4.
+```bash
+# List of tests
+python mlp_forward_compare.py 
+python mlp_backward_compare.py 
+python mlp_backward_compare_WF.py 
+
+python liger_swiglu_main.py
+python fused_swiglu_main.py 
+python liger_swiglu_main.py 
+
+python mlp_memory_compare.py 
+python deep_memory_compare.py 
+
+python small_numerical_test.py
+```
 
 ### Direct comparison of forward vs. backward for Liger vs Fused
 ```
 # Forward
 python mlp_forward_compare.py 
-Liger  B=64   D=2048 →   0.21 ms
+Liger  B=64   D=2048 ->   0.21 ms
 Fused  B=64   D=2048 ->   0.07 ms
-Liger  B=64   D=4096 →   0.99 ms
+Liger  B=64   D=4096 ->   0.99 ms
 Fused  B=64   D=4096 ->   0.35 ms
-Liger  B=256  D=2048 →   0.74 ms
+Liger  B=256  D=2048 ->   0.74 ms
 Fused  B=256  D=2048 ->   0.27 ms
-Liger  B=256  D=4096 →   2.34 ms
+Liger  B=256  D=4096 ->   2.34 ms
 Fused  B=256  D=4096 ->   0.83 ms
-Liger  B=1024 D=2048 →   3.10 ms
+Liger  B=1024 D=2048 ->   3.10 ms
 Fused  B=1024 D=2048 ->   1.14 ms
-Liger  B=1024 D=4096 →   8.71 ms
+Liger  B=1024 D=4096 ->   8.71 ms
 Fused  B=1024 D=4096 ->   3.12 ms
 
 # Backward no weight-grad
@@ -52,7 +66,7 @@ Liger-bwd  B=1024 D=4096 ->  28.76 ms
 Fused-bwd B=1024 D=4096 ->  13.51 ms
 ```
 
-### MNIST test output
+### MNIST training test output
 #### Liger
 ```
 python liger_swiglu_main.py
@@ -179,4 +193,30 @@ python deep_memory_compare.py
  64 layers: Liger peak 4552.3 MB   Fused peak 2248.3 MB   Memory saved 2304.0 MB
 128 layers: Liger peak 9032.3 MB   Fused peak 4424.3 MB   Memory saved 4608.0 MB
 256 layers: Liger peak 17992.3 MB   Fused peak 8776.3 MB   Memory saved 9216.0 MB
+```
+
+### Simple numerical test output
+```
+python small_numerical_test.py
+First few values of Reference Z:
+[[512. 512.]
+ [512. 512.]]
+
+First few values of Fused Z:
+[[512. 512.]
+ [512. 512.]]
+
+First few values of Reference dX:
+[[1024. 1024.]
+ [1024. 1024.]]
+
+First few values of Fused dX:
+[[1024. 1024.]
+ [1024. 1024.]]
+
+Forward max-abs error: 0.00e+00
+Backward-dX max-abs error: 0.00e+00
+
+Manual calculation for first element:
+Expected first Z value: 512.0000
 ```

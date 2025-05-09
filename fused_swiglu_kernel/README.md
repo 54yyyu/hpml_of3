@@ -9,9 +9,15 @@ Provide a drop-in replacement for the "two linears + LigerSiLUMulFunction.apply"
 - **CUDA GPU** (compute capability ≥ 7.0)  
 - Python ≥ 3.8, PyTorch ≥ 1.13  
 - Triton JIT/AOT compiler:  
-  ```bash
-  pip install triton==2.0.0
-  ```
+```bash
+pip install triton
+```
+- To run the tests in tests/:
+```bash
+# install these libraries
+pip install torch torchvision
+pip install liger-kernel
+```
 
 ### 3. Installation
 

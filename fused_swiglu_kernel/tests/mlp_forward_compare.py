@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import torch, time, triton
 from liger_kernel.ops.swiglu import LigerSiLUMulFunction
 from fused_forward_kernel import swiglu_fused_forward_kernel
@@ -16,7 +20,7 @@ def bench_liger(B, D, iters=100):
         z = LigerSiLUMulFunction.apply(x @ W1a, x @ W1b)
         _ = z @ W2
     torch.cuda.synchronize()
-    print(f"Liger  B={B:<4} D={D:<4} → {(time.perf_counter()-t0)/iters*1000:6.2f} ms")
+    print(f"Liger  B={B:<4} D={D:<4} -> {(time.perf_counter()-t0)/iters*1000:6.2f} ms")
 
 def bench_fused(B, D, iters=100, block=64):
     Wf = torch.randn(D, 2*D, device='cuda')

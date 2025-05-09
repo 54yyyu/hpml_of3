@@ -31,6 +31,7 @@ def swiglu_fused_backward_kernel(
         mask=(offs_n[:, None]<D)&(tl.arange(0, BLOCK_N)[None, :]<2*D),
         other=0.0
     )
+    
     # 4) load fused‐weight half B (W₁ᵦ) [BLOCK_N×BLOCK_N]
     w_b = tl.load(
         W_ptr + offs_n[:, None]*stride_wd + (tl.arange(0, BLOCK_N)[None, :]+D)*stride_w2d,

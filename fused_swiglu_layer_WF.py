@@ -33,7 +33,7 @@ class _FusedSwiGLUFunction(autograd.Function):
         )
         return z
 
-    # HERE IS THE ONE WITH dWf, which 
+    # HERE IS THE ONE WITH dWf
     @staticmethod
     def backward(ctx, dZ):
         import torch, triton

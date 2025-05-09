@@ -227,3 +227,7 @@ out = self.fc2(z)
    * Backward only: `mlp_backward_compare.py`
    * Backward + WF: `mlp_backward_compare_WF.py`
    * End-to-end MNIST training: compare `liger_swiglu_main.py` vs. `fused_swiglu_main.py` vs. `fused_swiglu_main_WF.py`
+
+### 9. WANDB project link
+- https://wandb.ai/rahulrram04-columbia-university/swiglu-kernel-compare?nw=nwuserrahulrram04
+- https://wandb.ai/rahulrram04-columbia-university/activation-microbench?nw=nwuserrahulrram04

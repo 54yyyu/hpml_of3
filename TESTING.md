@@ -1,7 +1,8 @@
 # TESTING
 
 ## Output of the tests
-All of the tests are done on an NVIDIA L4.
+All of the tests are done on an NVIDIA L4. To test it out, go into tests/
+and run each command separately, alternatively, use the provided bash script `run_all_tests.sh`
 ```bash
 # List of tests
 python mlp_forward_compare.py 

@@ -212,7 +212,7 @@ out = self.fc2(z)
 * **CUDA guard**: fallback to Liger for CPU/MPS
 * **Shared-memory errors**: reduce `block` if "out of resources"
 
-### 8. Validation & Benchmark
+### 8. Validation & Benchmark (more in tests/)
 
 1. **Sanity check**
 

@@ -12,11 +12,18 @@ Provide a drop-in replacement for the "two linears + LigerSiLUMulFunction.apply"
 ```bash
 pip install triton
 ```
-- To run the tests in tests/:
+
+### 3. Reproducibility Instructions
+For specific test cases and commands, visit `TESTING.md`. 
+
+Before you can do that, install these dependencies
 ```bash
 # install these libraries
 pip install torch torchvision
 pip install liger-kernel
+
+# or run this command
+pip install -r requirements.txt
 ```
 
 ### 3. Installation

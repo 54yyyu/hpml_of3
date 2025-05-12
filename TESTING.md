@@ -1,6 +1,79 @@
 # TESTING
 
-## Output of the tests
+## Running the benchmarks
+All of the benchmarks are done on an NVIDIA L4. To run the benchmarks, go into benchmarks/
+and run each comand separately.
+```bash
+# List of benchmarks
+python benchmark_forward.py 
+python benchmark_backward.py 
+python benchmark_memory.py 
+```
+
+### Result
+#### `benchmark_forward.py`
+```
+B=64 D=512    → speedup (liger/fused): 2.26×
+B=64 D=1024   → speedup (liger/fused): 2.18×
+B=64 D=2048   → speedup (liger/fused): 3.43×
+B=64 D=4096   → speedup (liger/fused): 2.89×
+B=64 D=8192   → speedup (liger/fused): 2.84×
+B=64 D=16384  → speedup (liger/fused): 2.94×
+B=64 D=32768  → speedup (liger/fused): 2.92×
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:     dim ▁▁▁▂▃▄█
+wandb: speedup ▁▁█▅▅▅▅
+wandb: 
+wandb: Run summary:
+wandb:     dim 32768
+wandb: speedup 2.92186
+wandb: 
+```
+#### `benchmark_backward.py`
+```
+B=64 D=512    → speedup (liger/fused): 2.23×
+B=64 D=1024   → speedup (liger/fused): 2.15×
+B=64 D=2048   → speedup (liger/fused): 3.34×
+B=64 D=4096   → speedup (liger/fused): 2.86×
+B=64 D=8192   → speedup (liger/fused): 2.77×
+B=64 D=16384  → speedup (liger/fused): 2.96×
+B=64 D=32768  → speedup (liger/fused): 2.92×
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:     dim ▁▁▁▂▃▄█
+wandb: speedup ▁▁█▅▅▆▆
+wandb: 
+wandb: Run summary:
+wandb:     dim 32768
+wandb: speedup 2.92326
+```
+#### `benchmark_memory.py`
+```
+B=64 D=512    → ratio (liger/fused): 1.11×
+B=64 D=1024   → ratio (liger/fused): 1.25×
+B=64 D=2048   → ratio (liger/fused): 1.40×
+B=64 D=4096   → ratio (liger/fused): 1.47×
+B=64 D=8192   → ratio (liger/fused): 1.49×
+B=64 D=16384  → ratio (liger/fused): 1.50×
+wandb:                                                                                
+wandb: 
+wandb: Run history:
+wandb:          dim ▁▁▂▃▄█
+wandb: mem_fused_mb ▁▁▁▁▃█
+wandb: mem_liger_mb ▁▁▁▁▃█
+wandb: mem_ratio_mb ▁▄▆▇██
+wandb: 
+wandb: Run summary:
+wandb:          dim 16384
+wandb: mem_fused_mb 4132.25098
+wandb: mem_liger_mb 6188.25098
+wandb: mem_ratio_mb 1.49755
+```
+
+## Running the tests
 All of the tests are done on an NVIDIA L4. To test it out, go into tests/
 and run each command separately, alternatively, use the provided bash script `run_all_tests.sh`
 ```bash

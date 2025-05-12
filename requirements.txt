@@ -1,3 +1,4 @@
 torchvision
 triton
 liger-kernel
+wandb

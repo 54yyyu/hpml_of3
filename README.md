@@ -14,13 +14,14 @@ pip install triton
 ```
 
 ### 3. Reproducibility Instructions
-For specific test cases and commands, visit `TESTING.md`. 
+For specific test cases and commands, visit `TESTING.md`. In there is also where the output of the benchmarks are located. `DESIGN.md` gives a summary of the test results.
 
 Before you can do that, install these dependencies
 ```bash
 # install these libraries
 pip install torch torchvision
 pip install liger-kernel
+pip install wandb
 
 # or run this command
 pip install -r requirements.txt
@@ -219,7 +220,7 @@ out = self.fc2(z)
 * **CUDA guard**: fallback to Liger for CPU/MPS
 * **Shared-memory errors**: reduce `block` if "out of resources"
 
-### 8. Validation & Benchmark (more in tests/)
+### 8. Validation & Benchmark (more in tests/ and benchmarks/)
 
 1. **Sanity check**
 
@@ -230,10 +231,11 @@ out = self.fc2(z)
    ```
 2. **Benchmarks**
 
-   * Forward only: `mlp_forward_compare.py`
-   * Backward only: `mlp_backward_compare.py`
-   * Backward + WF: `mlp_backward_compare_WF.py`
-   * End-to-end MNIST training: compare `liger_swiglu_main.py` vs. `fused_swiglu_main.py` vs. `fused_swiglu_main_WF.py`
+   * Forward only: `tests/mlp_forward_compare.py` or `benchmarks/benchmark_forward.py`
+   * Backward only: `tests/mlp_backward_compare.py` or `benchmarks/benchmark_backward.py`
+   * Memmory: `benchmarks/benchmark_memory.py`
+   * Backward + WF: `tests/mlp_backward_compare_WF.py`
+   * End-to-end MNIST training: compare `tests/liger_swiglu_main.py` vs. `tests/fused_swiglu_main.py` vs. `tests/fused_swiglu_main_WF.py`
 
 ### 9. WANDB project link
 - https://wandb.ai/rahulrram04-columbia-university/swiglu-kernel-compare?nw=nwuserrahulrram04

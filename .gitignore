@@ -4,3 +4,4 @@ inputs_prediction/
 outputs_prediction/
 stanford-rna-3d-folding.zip
 rna-prediction-boltz/
+profiler_trace_boltz/result.pickle
